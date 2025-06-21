@@ -11,9 +11,9 @@ from dataclasses import (
 from pathlib import Path
 
 # Helper first so it is defined when other functions call it.
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
-SCHEMA_VERSION = "2025-03-26"
+SCHEMA_VERSION = "2025-06-18"
 JSONRPC_VERSION = "2.0"
 
 STANDARD_DERIVE = "#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]\n"
@@ -211,20 +211,7 @@ def add_definition(name: str, definition: dict[str, Any], out: list[str]) -> Non
     any_of = definition.get("anyOf", [])
     if any_of:
         assert isinstance(any_of, list)
-        if name == "JSONRPCMessage":
-            # Special case for JSONRPCMessage because its definition in the
-            # JSON schema does not quite match how we think about this type
-            # definition in Rust.
-            deep_copied_any_of = json.loads(json.dumps(any_of))
-            deep_copied_any_of[2] = {
-                "$ref": "#/definitions/JSONRPCBatchRequest",
-            }
-            deep_copied_any_of[5] = {
-                "$ref": "#/definitions/JSONRPCBatchResponse",
-            }
-            out.extend(define_any_of(name, deep_copied_any_of, description))
-        else:
-            out.extend(define_any_of(name, any_of, description))
+        out.extend(define_any_of(name, any_of, description))
         return
 
     type_prop = definition.get("type", None)
@@ -258,10 +245,10 @@ extra_defs = []
 
 @dataclass
 class StructField:
-    viz: Literal["pub"] | Literal["const"]
+    viz: Literal["pub", "const"]
     name: str
     type_name: str
-    serde: str | None = None
+    serde: Optional[str] = None
 
     def append(self, out: list[str], supports_const: bool) -> None:
         if self.serde:
@@ -279,7 +266,7 @@ def define_struct(
     name: str,
     properties: dict[str, Any],
     required_props: set[str],
-    description: str | None,
+    description: Optional[str],
 ) -> list[str]:
     out: list[str] = []
 
@@ -378,7 +365,7 @@ def add_trait_impl(
 
 
 def define_string_enum(
-    name: str, enum_values: Any, out: list[str], description: str | None
+    name: str, enum_values: Any, out: list[str], description: Optional[str]
 ) -> None:
     emit_doc_comment(description, out)
     out.append(STANDARD_DERIVE)
@@ -397,20 +384,17 @@ def define_untagged_enum(name: str, type_list: list[str], out: list[str]) -> Non
     out.append("#[serde(untagged)]\n")
     out.append(f"pub enum {name} {{\n")
     for simple_type in type_list:
-        match simple_type:
-            case "string":
-                out.append("    String(String),\n")
-            case "integer":
-                out.append("    Integer(i64),\n")
-            case _:
-                raise ValueError(
-                    f"Unknown type in untagged enum: {simple_type} in {name}"
-                )
+        if simple_type == "string":
+            out.append("    String(String),\n")
+        elif simple_type == "integer":
+            out.append("    Integer(i64),\n")
+        else:
+            raise ValueError(f"Unknown type in untagged enum: {simple_type} in {name}")
     out.append("}\n\n")
 
 
 def define_any_of(
-    name: str, list_of_refs: list[Any], description: str | None = None
+    name: str, list_of_refs: list[Any], description: Optional[str] = None
 ) -> list[str]:
     """Generate a Rust enum for a JSON-Schema `anyOf` union.
 
@@ -499,21 +483,17 @@ def define_any_of(
     return out
 
 
-def get_serde_annotation_for_anyof_type(type_name: str) -> str | None:
+def get_serde_annotation_for_anyof_type(type_name: str) -> Optional[str]:
     # TODO: Solve this in a more generic way.
-    match type_name:
-        case "ClientRequest":
-            return '#[serde(tag = "method", content = "params")]'
-        case "ServerNotification":
-            return '#[serde(tag = "method", content = "params")]'
-        case _:
-            return "#[serde(untagged)]"
+    if type_name in ("ClientRequest", "ServerNotification"):
+        return '#[serde(tag = "method", content = "params")]'
+    return "#[serde(untagged)]"
 
 
 def map_type(
     typedef: dict[str, any],
-    prop_name: str | None = None,
-    struct_name: str | None = None,
+    prop_name: Optional[str] = None,
+    struct_name: Optional[str] = None,
 ) -> str:
     """typedef must have a `type` key, but may also have an `items`key."""
     ref_prop = typedef.get("$ref", None)
@@ -585,7 +565,7 @@ def map_type(
 class RustProp:
     name: str
     # serde annotation, if necessary
-    serde: str | None = None
+    serde: Optional[str] = None
 
 
 def rust_prop_name(name: str, is_optional: bool) -> RustProp:
@@ -594,8 +574,13 @@ def rust_prop_name(name: str, is_optional: bool) -> RustProp:
     is_rename = False
     if name == "type":
         prop_name = "r#type"
+        is_rename = True
     elif name == "ref":
         prop_name = "r#ref"
+        is_rename = True
+    elif name == "enum":
+        prop_name = "r#enum"
+        is_rename = True
     elif snake_case := to_snake_case(name):
         prop_name = snake_case
         is_rename = True
@@ -632,7 +617,7 @@ def capitalize(name: str) -> str:
     return name[0].upper() + name[1:]
 
 
-def check_string_list(value: Any) -> list[str] | None:
+def check_string_list(value: Any) -> Optional[list[str]]:
     """If the value is a list of strings, return it. Otherwise, return None."""
     if not isinstance(value, list):
         return None
@@ -648,7 +633,7 @@ def type_from_ref(ref: str) -> str:
     return ref.split("/")[-1]
 
 
-def emit_doc_comment(text: str | None, out: list[str]) -> None:
+def emit_doc_comment(text: Optional[str], out: list[str]) -> None:
     """Append Rust doc comments derived from the JSON-schema description."""
     if not text:
         return
