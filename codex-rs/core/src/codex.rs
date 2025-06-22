@@ -912,7 +912,7 @@ async fn run_task(sess: Arc<Session>, sub_id: String, input: Vec<InputItem>) {
                         ) => {
                             items_to_record_in_conversation_history.push(item);
                             let (content, success): (String, Option<bool>) = match result {
-                                Ok(CallToolResult { content, is_error }) => {
+                                Ok(CallToolResult { content, is_error, .. }) => {
                                     match serde_json::to_string(content) {
                                         Ok(content) => (content, *is_error),
                                         Err(e) => {

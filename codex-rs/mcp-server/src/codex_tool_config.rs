@@ -131,7 +131,9 @@ pub(crate) fn create_tool_for_codex_tool_call_param() -> Tool {
         });
     Tool {
         name: "codex".to_string(),
+        title: None,
         input_schema: tool_input_schema,
+        output_schema: None,
         description: Some(
             "Run a Codex session. Accepts configuration parameters matching the Codex Config struct."
                 .to_string(),
