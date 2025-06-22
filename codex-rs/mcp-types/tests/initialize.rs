@@ -57,10 +57,12 @@ fn deserialize_initialize_request() {
                 experimental: None,
                 roots: None,
                 sampling: None,
+                elicitation: None,
             },
             client_info: Implementation {
                 name: "acme-client".into(),
                 version: "1.2.3".into(),
+                title: None,
             },
             protocol_version: "2025-06-18".into(),
         }
